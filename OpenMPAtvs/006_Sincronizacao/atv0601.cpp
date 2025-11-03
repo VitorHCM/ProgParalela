@@ -69,11 +69,9 @@ int main() {
     // ===============================================================
 
     std::pair<double, double> raizesTotais[N];
-    double somaRaizesLocais = 0.0;
-    double somaTotal = 0.0;
 
     /*--------------------------------------------
-    Pragma omp atomic
+    Pragma omp critical
     -------------------------------------------*/
 
     #pragma omp parallel for
@@ -84,23 +82,16 @@ int main() {
 
         //cada thread calcula as raizes de suas variaveis
         std::pair<double, double> raizesLocais = resolver_bhaskara(a[i], b[i], c[i]);
-        //realiza a soma das raizes de cada thread
-        somaRaizesLocais = raizesLocais.first + raizesLocais.second;
 
-        #pragma omp atomic
-        /*
-        OMP Atomic faz com que o codigo abixo seja executado por cada thread de maneira atomica,
-        ou seja, indivisivel. Isso garante que o codigo seja executado por completo por uma thread
-        antes que a proxima execute ele.
-        O Atomic é mais eficiente que o Critical para operações simples de atualização (leitura-modificação-escrita).
-        */
-        
-        //soma-se cada resultado das somas das raizes locais
-        somaTotal += somaRaizesLocais;
-
+    #pragma omp critical
+    //OMP Critical nao permite que duas ou mais threads acessem a porcao de codigo
+    //abaixo. Assim o codigo e acessado uma thread de cada vez
+        {
+            //cada thread printa as raizes de cada equação de cada vez, seguindo a ordem de conclusao
+            std::cout << "Equação [" << i << "]: " << raizesLocais.first << ", " << raizesLocais.second << "\n";
+        }
     }
     
-    std::cout << "Soma de todas as raizes calculadas: " << somaTotal << "\n";
     // ===============================================================
 
     return 0;

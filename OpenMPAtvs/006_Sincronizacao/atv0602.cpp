@@ -20,6 +20,7 @@ Exercícios
   exercício 5     21/10/2025.
  */
 
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -67,44 +68,39 @@ int main() {
     //               ÁREA PARA RESOLVER OS EXERCÍCIOS
     // ===============================================================
 
-    std::pair <double, double> raizesTotais[N];
-    
+    std::pair<double, double> raizesTotais[N];
+    double somaRaizesLocais = 0.0;
+    double somaTotal = 0.0;
+
     /*--------------------------------------------
-    Pragma omp barrier
+    Pragma omp atomic
     -------------------------------------------*/
 
-    #pragma omp parallel 
-    {
+    #pragma omp parallel for
     //da inicio à regiao paralela do codigo. O loop for abaixo vai ser dividido entre 
     //todas as threads
 
-        //pega numeros das threads
-        int id = omp_get_thread_num();
+    for (int i = 0; i < N; ++i) {
 
-        #pragma omp for
-        for (int i = 0; i < N; ++i) {
+        //cada thread calcula as raizes de suas variaveis
+        std::pair<double, double> raizesLocais = resolver_bhaskara(a[i], b[i], c[i]);
+        //realiza a soma das raizes de cada thread
+        somaRaizesLocais = raizesLocais.first + raizesLocais.second;
 
-            //cada thread calcula as raizes de suas variaveis
-            std::pair<double, double> raizesLocais = resolver_bhaskara(a[i], b[i], c[i]);
-            raizesTotais[i] = raizesLocais;
-        }
-
-            #pragma omp barrier
-            /*
-            OMP Barrier faz o que o nome diz, ele cria uma barreira onde as threads param ate que
-            todas as threads tenham concluido a porção de codigo acima.
-            Assim que elas terminam,  
-            */
-            
-            #pragma omp for
-            //omp for para sinconizar threads
-
-            //o codigo abaixo checa os valores das raizes salvas na etapa anterior
-            for (int i = 0; i < 16; ++i) { //Reduzi de 1000 para 16 para facilitar a visualização
-            printf("Thread %d verificando raizes salvas: {%.2f, %.2f}.\n", id, raizesTotais[i].first, raizesTotais[i].second );
-            }
+        #pragma omp atomic
+        /*
+        OMP Atomic faz com que o codigo abixo seja executado por cada thread de maneira atomica,
+        ou seja, indivisivel. Isso garante que o codigo seja executado por completo por uma thread
+        antes que a proxima execute ele.
+        O Atomic é mais eficiente que o Critical para operações simples de atualização (leitura-modificação-escrita).
+        */
         
+        //soma-se cada resultado das somas das raizes locais
+        somaTotal += somaRaizesLocais;
+
     }
+    
+    std::cout << "Soma de todas as raizes calculadas: " << somaTotal << "\n";
     // ===============================================================
 
     return 0;

@@ -20,7 +20,6 @@ Exercícios
   exercício 5     21/10/2025.
  */
 
-
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -68,30 +67,61 @@ int main() {
     //               ÁREA PARA RESOLVER OS EXERCÍCIOS
     // ===============================================================
 
-    std::pair<double, double> raizesTotais[N];
-
+    std::pair <double, double> raizesTotais[N];
+        
     /*--------------------------------------------
-    Pragma omp critical
+    funções lock    
     -------------------------------------------*/
 
+    //variaveis que irao armazenar as somas pares e as somas impares
+    double somaPares = 0.0;
+    double somaImpares = 0.0;
+    double somaRaizesLocais = 0.0;
+
+    omp_lock_t lockPares;
+    omp_lock_t lockImpares;
+
     #pragma omp parallel for
-    //da inicio à regiao paralela do codigo. O loop for abaixo vai ser dividido entre 
-    //todas as threads
+        //da inicio à regiao paralela do codigo. O loop for abaixo vai ser dividido entre 
+        //todas as threads
 
-    for (int i = 0; i < N; ++i) {
+        for (int i = 0; i < 16; ++i) {
 
-        //cada thread calcula as raizes de suas variaveis
-        std::pair<double, double> raizesLocais = resolver_bhaskara(a[i], b[i], c[i]);
+            //cada thread calcula as raizes de suas variaveis
+            std::pair<double, double> raizesLocais = resolver_bhaskara(a[i], b[i], c[i]);
+            //realiza a soma das raizes de cada thread
+            somaRaizesLocais = raizesLocais.first + raizesLocais.second;
+            
+            if (i % 2 == 0){
+                //caso o indice seja par, utilizar-se do lockPares. Ele ira garantir que apenas essa thread
+                //acesse essa porcao de codigo. Enquanto isso, outras threads esperam aqui para poderem receber
+                //essa lock.
 
-    #pragma omp critical
-    //OMP Critical nao permite que duas ou mais threads acessem a porcao de codigo
-    //abaixo. Assim o codigo e acessado uma thread de cada vez
-        {
-            //cada thread printa as raizes de cada equação de cada vez, seguindo a ordem de conclusao
-            std::cout << "Equação [" << i << "]: " << raizesLocais.first << ", " << raizesLocais.second << "\n";
+                omp_set_lock(&lockPares);
+                somaPares += somaRaizesLocais; 
+
+                //Apos acessar a variavel somaPares, deve-se liberar a lock para que outras threads possam uza-la
+                omp_unset_lock(&lockPares);
+            
+            }else{
+                //em caso else, fazer o que foi feito anteriormente so que com lockImpar
+
+                omp_set_lock(&lockImpares);
+                somaImpares += somaRaizesLocais;
+
+                omp_unset_lock(&lockImpares);
+
+            }
+
         }
-    }
-    
+        //deve-se destruir as locks apos o uso para liberar a memoria do sistema
+        omp_destroy_lock(&lockPares);
+        omp_destroy_lock(&lockImpares);
+
+        std::cout << "Somas pares das raizes: " << somaPares << "\n";
+        std::cout << "Somas ímpares das raizes: " << somaImpares << "\n";
+        std::cout << "Soma total: " << somaPares + somaImpares << "\n";
+
     // ===============================================================
 
     return 0;
