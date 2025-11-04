@@ -92,12 +92,12 @@ O que deve ser entregue
 using namespace std;
 
 int criaTXT();
-vector <int> medeFrequencias(vector <double> , double , double, double );
-double mediaPonderada();
+vector <double> medeFrequencias(vector <double> , double , double, double );
+double mediaPonderada(vector <double>, double, double, int);
 double mediaPondParalela();
-double desvioPadrao();
+double desvioPadrao(vector <double>, double, double, int, double);
 double desvioPadraoParalelo();
-double coeficienteVariacao();
+double coeficienteVariacao(double, double);
 double coeficienteVarParalelo();
 
 int main(){
@@ -130,24 +130,31 @@ int main(){
     sort(alturas.begin(), alturas.end());
     sort(pesos.begin(), pesos.end());
 
-    /* Visualizacao do sort em cada vetor
-    for(int i = 1000; i >= 950; i--){
-        cout << "altura: "<< alturas[i] << endl << "peso: " << pesos[i] << endl;
-
-    }
-    */
-    
     //medir frequencias em cada intervalo de valor nos dois vetores
     //alturas intervalo de 0.08 m
-    vector <int> alturaFrequencias = medeFrequencias(alturas, 0.08, 1.4, 2.2); //vetor alturas, intervalo, altura minima/inicial
+    vector <double> alturaFrequencias = medeFrequencias(alturas, 0.08, 1.4, 2.2); //vetor alturas, intervalo, altura minima/inicial
     
     //pesos intervalo de 4 kg
-    vector <int> pesosFrequencias = medeFrequencias(pesos, 4, 40, 120); //vetor pesos, intervalo, peso minimo/inicial
+    vector <double> pesosFrequencias = medeFrequencias(pesos, 4, 40, 120); //vetor pesos, intervalo, peso minimo/inicial
     cout << endl;
-    for (int i = 0; i <= 20; i++){
-        cout << alturaFrequencias[i] << " " << pesosFrequencias[i] << endl;
-    }
 
+    //calcula alturas
+    double t0 = omp_get_wtime(); // t0 de sequencial
+    double mediaAltura = mediaPonderada(alturaFrequencias, 0.08, 1.4, 9); // vetor de frequencias, intervalos, valor inicial, int de parada
+    double dPAltura = desvioPadrao(alturaFrequencias, 0.08, 1.4, 9, mediaAltura); // || + media ponderada
+    double cVarAltura = coeficienteVariacao(dPAltura, mediaAltura);
+    //calcula pesos
+    double mediaPesos = mediaPonderada(pesosFrequencias, 4, 40, 19); // vetor de frequencias, intervalos, valor inicial, int de parada
+    double dPPesos = desvioPadrao(pesosFrequencias, 4, 40, 19, mediaPesos); // || + media ponderada
+    double cVarPesos = coeficienteVariacao(dPPesos, mediaPesos);
+    double t1 = omp_get_wtime(); // t1 de sequencial
+    
+    cout << "\nMedias: Peso: " << mediaPesos << " Altura: " << mediaAltura << endl;
+    cout << "Desvios: Peso: " << dPPesos << " Altura: " << dPAltura << endl;
+
+    cout << "Coeficientes de Variacao Sequencial:\nAltura: " << cVarAltura << "\nPesos: " << cVarPesos << "\nTempo de execucao: " << t1 - t0 << endl; 
+
+return 0;
 }
 
 int criaTXT(){
@@ -166,8 +173,8 @@ int criaTXT(){
     file.close(); // fecha o arquivo
     cout << "Arquivo criado e preenchido com sucesso: data.txt" << endl;
 }
-vector <int> medeFrequencias(vector <double> vetor, double intervalo, double valorInicial, double valorFinal){
-    vector <int> vetorFrequencias;
+vector <double> medeFrequencias(vector <double> vetor, double intervalo, double valorInicial, double valorFinal){
+    vector <double> vetorFrequencias;
     int counter = 0;
     double intervaloAtual = valorInicial + intervalo;
     double inter = 0;
@@ -185,22 +192,23 @@ vector <int> medeFrequencias(vector <double> vetor, double intervalo, double val
     } return vetorFrequencias;
 }
 double mediaPonderada(vector <double> vetorFreq, double intervalo, double valorInicial, int parada){
-
     double mPonderada = 0.0;
     double sumFreq = 0;
     double sumFreqLocal = 0;
     double sum = 0;
     double sumLocal = 0;
     double intervaloAtual = valorInicial + intervalo;
+    double mediator;
 
     for(int i = 0; i <= parada; i++){
 
         sumLocal  = intervaloAtual*vetorFreq[i];
-        sum = sum + sumLocal;   //soma frequencia mais valor do intervalo
-
-        sumFreq = sumFreq + vetorFreq[i]; //soma frequencias para obter N
-
-        intervaloAtual = intervaloAtual + intervalo;
+        mediator = sum;
+        sum = mediator + sumLocal;   //soma frequencia mais valor do intervalo
+        mediator = sumFreq;
+        sumFreq = mediator + vetorFreq[i]; //soma frequencias para obter N
+        mediator = intervaloAtual;
+        intervaloAtual = mediator + intervalo;
     }
     mPonderada = sum / sumFreq;
     return mPonderada;
@@ -216,18 +224,26 @@ double desvioPadrao(vector <double> vetorFreq, double intervalo, double valorIni
     double sum = 0;
     double sumLocal = 0;
     double intervaloAtual = valorInicial + intervalo;
+    double value = 0;
 
     for(int i = 0; i <= parada; i++){
+        
+        double x, x2, x3, mediator;
 
-        sumLocal  = vetorFreq[i]*(intervaloAtual-mPonderada)*(intervaloAtual-mPonderada);
-        sum = sum + sumLocal;   //soma frequencia mais valor do intervalo
+        x = (intervaloAtual-mPonderada);
+        x2 = x*x;
+        x3 = vetorFreq[i]*x2;
 
-        sumFreq = sumFreq + vetorFreq[i]; //soma frequencias para obter N
+        mediator = sum;
+        sum = mediator + x3;   //soma parte de cima
 
-        intervaloAtual = intervaloAtual + intervalo;
+        mediator = sumFreq;
+        sumFreq = mediator + vetorFreq[i]; //soma frequencias para obter N
+
+        mediator = intervaloAtual;
+        intervaloAtual = mediator + intervalo;
     }
-        double value;
-        value = sumLocal/sumFreq;
+        value = sum/sumFreq;
         dPadrao = sqrt(value);
         return dPadrao;
 }
