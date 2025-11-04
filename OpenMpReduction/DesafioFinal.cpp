@@ -82,6 +82,7 @@ O que deve ser entregue
 */
 
 #include <iostream>
+#include <iomanip>
 #include <fstream>      //para manipulacao de arquivos
 #include <cstdlib>      //para random 
 #include <algorithm>    //para sort
@@ -94,11 +95,12 @@ using namespace std;
 int criaTXT();
 vector <double> medeFrequencias(vector <double> , double , double, double );
 double mediaPonderada(vector <double>, double, double, int);
-double mediaPondParalela();
+double mediaPondParalela(vector <double>, double, double, int);
 double desvioPadrao(vector <double>, double, double, int, double);
-double desvioPadraoParalelo();
+double desvioPadraoParalelo(vector <double>, double, double, int, double);
 double coeficienteVariacao(double, double);
-double coeficienteVarParalelo();
+
+//========================== MAIN ================================================================================================================//
 
 int main(){
 
@@ -149,13 +151,31 @@ int main(){
     double cVarPesos = coeficienteVariacao(dPPesos, mediaPesos);
     double t1 = omp_get_wtime(); // t1 de sequencial
     
-    cout << "\nMedias: Peso: " << mediaPesos << " Altura: " << mediaAltura << endl;
-    cout << "Desvios: Peso: " << dPPesos << " Altura: " << dPAltura << endl;
+    cout << "\nMedias: Peso: " << fixed << setprecision(5) << mediaPesos << " Altura: " << mediaAltura << endl;
+    cout << "Desvios: Peso: " << fixed << setprecision(5) << dPPesos << " Altura: " << dPAltura << endl;
 
-    cout << "Coeficientes de Variacao Sequencial:\nAltura: " << cVarAltura << "\nPesos: " << cVarPesos << "\nTempo de execucao: " << t1 - t0 << endl; 
+    cout << "Coeficientes de Variacao Sequencial:\nAltura: " << fixed << setprecision(5) << cVarAltura << "\nPesos: " << cVarPesos << "\nTempo de execucao: " << t1 - t0 << endl; 
+
+    //realiza os calculo de forma paralela
+    double t2 = omp_get_wtime(); // t0 de sequencial
+    double mediaAlturaP = mediaPondParalela(alturaFrequencias, 0.08, 1.4, 9); // vetor de frequencias, intervalos, valor inicial, int de parada
+    double dPAlturaP = desvioPadraoParalelo(alturaFrequencias, 0.08, 1.4, 9, mediaAltura); // || + media ponderada
+    double cVarAlturaP = coeficienteVariacao(dPAltura, mediaAltura);
+    //calcula pesos
+    double mediaPesosP = mediaPondParalela(pesosFrequencias, 4, 40, 19); // vetor de frequencias, intervalos, valor inicial, int de parada
+    double dPPesosP = desvioPadraoParalelo(pesosFrequencias, 4, 40, 19, mediaPesos); // || + media ponderada
+    double cVarPesosP = coeficienteVariacao(dPPesos, mediaPesos);
+    double t3 = omp_get_wtime(); // t1 de sequencial
+    
+    cout << "\nMedias Paralelas: Peso: " << fixed << setprecision(5) << mediaPesosP << " Altura: " << mediaAlturaP << endl;
+    cout << "Desvios Paralelos: Peso: " << fixed << setprecision(5) << dPPesosP << " Altura: " << dPAlturaP << endl;
+
+    cout << "Coeficientes de Variacao Paralela:\nAltura: " << fixed << setprecision(5) << cVarAlturaP << "\nPesos: " << cVarPesosP << "\nTempo de execucao: " << t3 - t2 << endl; 
 
 return 0;
 }
+
+//============================== DEFINICOES ===============================================================================================//
 
 int criaTXT(){
     ofstream file("data.txt");  //cria e abre o arquivo
@@ -186,8 +206,7 @@ vector <double> medeFrequencias(vector <double> vetor, double intervalo, double 
             }else{ //caso nao esteja dentro do intervalo, atualiza-se o intervalo para frente, salva a frequencia no indice do vetorFrequencia e reseta o counter
                 vetorFrequencias.push_back (counter);
                 counter = 0.0;
-                inter = intervaloAtual;
-                intervaloAtual = inter + intervalo; }            
+                intervaloAtual += intervalo; }            
         }
     } return vetorFrequencias;
 }
@@ -213,7 +232,34 @@ double mediaPonderada(vector <double> vetorFreq, double intervalo, double valorI
     mPonderada = sum / sumFreq;
     return mPonderada;
 }
-double mediaPondParalela(){
+double mediaPondParalela(vector <double> vetorFreq, double intervalo, double valorInicial, int parada){
+    
+    double sumGlobal = 0;
+    double sumFreqGlobal = 0;
+
+    #pragma omp parallel
+    {
+        double sumFreqLocal = 0;
+        double sumLocal = 0;
+        double intervaloAtual = valorInicial + intervalo;
+        double mediator;
+
+        #pragma omp for
+        for(int i = 0; i <= parada; i++){
+
+            sumLocal  = intervaloAtual*vetorFreq[i]; //faz soma local
+
+            sumFreqLocal += vetorFreq[i]; //soma frequencias para obter N
+
+            intervaloAtual += intervalo; //atualiza o intervalo
+
+            #pragma omp atomic //realioza soma atomica dos valores
+                sumGlobal += sumLocal;
+                sumFreqGlobal += sumFreqLocal;
+        }
+    }        
+    double mPonderada = sumGlobal/sumFreqGlobal;
+    return mPonderada;
 
 }
 double desvioPadrao(vector <double> vetorFreq, double intervalo, double valorInicial, int parada, double mPonderada){
@@ -247,14 +293,45 @@ double desvioPadrao(vector <double> vetorFreq, double intervalo, double valorIni
         dPadrao = sqrt(value);
         return dPadrao;
 }
-double desvioPadraoParalelo(){
+double desvioPadraoParalelo(vector <double> vetorFreq, double intervalo, double valorInicial, int parada, double mPonderada){
+    
+    double dPadrao = 0.0;
+    double sumFreqGlobal = 0;
+    double sumFreqLocal = 0;
+    double sumGlobal = 0;
+    double sumLocal = 0;
+    double intervaloAtual = valorInicial + intervalo;
+    double value = 0;
 
+    #pragma omp parallel
+    {//inicio zona paralela
+        #pragma omp for
+        for(int i = 0; i <= parada; i++){
+            
+            double x, x2, x3;
+
+            x = (intervaloAtual-mPonderada);
+            x2 = x*x;
+            x3 = vetorFreq[i]*x2;
+
+            sumLocal += x3;   //soma parte de cima
+
+            sumFreqLocal += vetorFreq[i]; //soma frequencias para obter N
+
+            intervaloAtual += intervalo;
+        }
+        #pragma omp atomic //realiza soma de froma atomica
+        sumGlobal += sumLocal;
+        sumFreqGlobal += sumFreqLocal;
+
+    }//fim zona parallal    
+        value = sumGlobal/sumFreqGlobal;
+        dPadrao = sqrt(value); //faz desvio padrao
+        return dPadrao;
 }
 double coeficienteVariacao(double dPadrao, double mPonderada){
     double coeficiente = (dPadrao/mPonderada)*100;
     return coeficiente; 
 }
-double coeficienteVarParalelo(){
 
-}
 
